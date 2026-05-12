@@ -1,128 +1,63 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
-# -------------------------
-# Load data
-# -------------------------
-
+# 1. Load the datasets
+# Pandas can read .gz files directly
 expr = pd.read_csv("filtered.tsv.gz", sep="\t")
-
-# remove spaces from column names
 expr.columns = expr.columns.str.strip()
 
-classes = pd.read_csv(
-    "class.tsv",
-    sep="\t",
-    header=None
-)
+# Labels for the 105 patients
+classes = pd.read_csv("class.tsv", sep="\t", header=None)
 
+# Gene mapping file
 cols = pd.read_csv(
-    "columns.tsv.gz",
-    sep="\t",
-    comment="#",
-    header=None,
+    "columns.tsv.gz", 
+    sep="\t", 
+    comment="#", 
+    header=None, 
     on_bad_lines='skip'
 )
 
-# -------------------------
-# Debug expression matrix
-# -------------------------
+# 2. Identify the Gene IDs for XBP1 and GATA3
+# We look for the gene symbol in column index 4 and get the ID from column index 0
+xbp1_id = str(int(cols[cols[4].astype(str).str.upper() == "XBP1"].iloc[0,0]))
+gata3_id = str(int(cols[cols[4].astype(str).str.upper() == "GATA3"].iloc[0,0]))
 
-print("\nExpression Data:")
-print(expr.head())
-
-print("\nExpression Columns:")
-print(expr.columns[:20])
-
-# -------------------------
-# Find XBP1
-# -------------------------
-
-xbp1_row = cols[
-    cols[4].astype(str).str.upper() == "XBP1"
-]
-
-print("\nXBP1 ROW:")
-print(xbp1_row)
-
-xbp1_id = int(xbp1_row.iloc[0,0])
-
-# -------------------------
-# Find GATA3
-# -------------------------
-
-gata3_row = cols[
-    cols[4].astype(str).str.upper() == "GATA3"
-]
-
-print("\nGATA3 ROW:")
-print(gata3_row)
-
-gata3_id = int(gata3_row.iloc[0,0])
-
-print("\nXBP1 ID:", xbp1_id)
-print("GATA3 ID:", gata3_id)
-
-# -------------------------
-# Extract expression
-# -------------------------
-
-xbp1 = expr[str(xbp1_id)]
-gata3 = expr[str(gata3_id)]
-
-# -------------------------
-# Scatter Plot
-# -------------------------
-
+# 3. Figure 1a: Gene vs Gene Scatter Plot (105 points)
 plt.figure(figsize=(8,6))
-
-plt.scatter(
-    xbp1,
-    gata3,
-    c=classes[0]
-)
-
-plt.xlabel("XBP1")
-plt.ylabel("GATA3")
-plt.title("XBP1 vs GATA3")
-
+plt.scatter(expr[xbp1_id], expr[gata3_id], c=classes[0], cmap='viridis', alpha=0.8)
+plt.xlabel(f"XBP1 Expression (ID: {xbp1_id})")
+plt.ylabel(f"GATA3 Expression (ID: {gata3_id})")
+plt.title("Figure 1a: XBP1 vs GATA3 Scatter Plot")
+plt.colorbar(label='Class (0:ER-, 1:ER+)')
 plt.savefig("scatter_plot.png")
-
 plt.show()
 
-# -------------------------
-# PCA
-# -------------------------
+# 4. PCA for Patient Clustering
+# PCA expects (n_samples, n_features). 
+# Since expr is (105 patients, 16174 genes), it is already in the correct format.
+# We remove the .T (transpose) that caused the 16174 vs 105 error.
+X = expr.select_dtypes(include=['number'])
 
-# Keep only numeric columns
-expr_numeric = expr.select_dtypes(include=['number'])
+# Step 4.1: Scaling (Crucial for biological data)
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-# transpose matrix
-X = expr_numeric.T
-
+# Step 4.2: Run PCA
 pca = PCA(n_components=2)
+X_pca = pca.fit_transform(X_scaled)
 
-X_pca = pca.fit_transform(X)
-
-# -------------------------
-# PCA Plot
-# -------------------------
-
+# 5. Figure 1c: PCA Plot (105 points)
 plt.figure(figsize=(8,6))
-
-plt.scatter(
-    X_pca[:,0],
-    X_pca[:,1],
-    c=classes[0]
-)
-
-plt.xlabel("PC1")
-plt.ylabel("PC2")
-plt.title("PCA on Gene Expression Data")
-
-plt.savefig("pca_plot.png")
-
+# This now plots 105 dots, matching your 105 class labels
+plt.scatter(X_pca[:, 0], X_pca[:, 1], c=classes[0], cmap='viridis', alpha=0.8)
+plt.xlabel(f"PC1 ({pca.explained_variance_ratio_[0]:.2%} variance)")
+plt.ylabel(f"PC2 ({pca.explained_variance_ratio_[1]:.2%} variance)")
+plt.title("Figure 1c: PCA Clustering of Patients")
+plt.colorbar(label='Class (0:ER-, 1:ER+)')
+plt.savefig("pca_plot_final.png")
 plt.show()
 
-print("\nDONE!")
+print(f"PCA complete. PC1 explains {pca.explained_variance_ratio_[0]:.2%} of the variance.")
